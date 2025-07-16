@@ -16,9 +16,9 @@ CC_SEQUENCE="1"
 CC_INIT_FCN="InitLedger"
 CC_END_POLICY="AND('Org1MSP.peer','Org2MSP.peer')"
 CC_COLL_CONFIG=""
-COMPOSE_FILE_BASE=docker/docker-compose-test-net.yaml
-COMPOSE_FILE_COUCH=docker/docker-compose-couch.yaml
-COMPOSE_FILE_CA=docker/docker-compose-ca.yaml
+COMPOSE_FILE_BASE=docker-compose.yaml
+COMPOSE_FILE_COUCH=${COMPOSE_FILE_BASE}
+COMPOSE_FILE_CA=${COMPOSE_FILE_BASE}
 CRYPTO="crypto-config"
 MAX_RETRY=5
 CLI_DELAY=3
@@ -103,6 +103,7 @@ function networkUp() {
       scripts/registerEnroll.sh
     else
       echo "使用cryptogen生成证书和密钥..."
+      mkdir -p organizations/peerOrganizations organizations/ordererOrganizations
       cryptogen generate --config=./organizations/cryptogen/crypto-config-org1.yaml --output="organizations"
       cryptogen generate --config=./organizations/cryptogen/crypto-config-org2.yaml --output="organizations"
       cryptogen generate --config=./organizations/cryptogen/crypto-config-orderer.yaml --output="organizations"
@@ -110,16 +111,11 @@ function networkUp() {
   fi
 
   echo "生成通道配置交易..."
+  mkdir -p system-genesis-block
   configtxgen -profile TwoOrgsOrdererGenesis -channelID system-channel -outputBlock ./system-genesis-block/genesis.block
   
-  if [ "$DATABASE" == "couchdb" ]; then
-    COMPOSE_FILES="-f ${COMPOSE_FILE_BASE} -f ${COMPOSE_FILE_COUCH}"
-  else
-    COMPOSE_FILES="-f ${COMPOSE_FILE_BASE}"
-  fi
-
   echo "启动Fabric网络..."
-  docker-compose $COMPOSE_FILES up -d
+  docker-compose -f ${COMPOSE_FILE_BASE} up -d
 }
 
 # 创建通道
@@ -137,9 +133,11 @@ function deployCC() {
 # 关闭网络
 function networkDown() {
   echo "关闭Fabric网络..."
-  docker-compose -f $COMPOSE_FILE_BASE -f $COMPOSE_FILE_COUCH -f $COMPOSE_FILE_CA down --volumes --remove-orphans
-  docker run --rm -v $(pwd):/data busybox sh -c 'cd /data && rm -rf system-genesis-block/*.block organizations/peerOrganizations organizations/ordererOrganizations'
-  docker run --rm -v $(pwd):/data busybox sh -c 'cd /data && rm -rf channel-artifacts log.txt *.tar.gz'
+  docker-compose -f ${COMPOSE_FILE_BASE} down --volumes --remove-orphans
+  if [ -d "organizations/peerOrganizations" ]; then
+    docker run --rm -v $(pwd):/data busybox sh -c 'cd /data && rm -rf system-genesis-block/*.block organizations/peerOrganizations organizations/ordererOrganizations'
+    docker run --rm -v $(pwd):/data busybox sh -c 'cd /data && rm -rf channel-artifacts log.txt *.tar.gz'
+  fi
 }
 
 # 主函数

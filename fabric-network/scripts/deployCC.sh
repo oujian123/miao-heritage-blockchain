@@ -22,13 +22,43 @@ VERBOSE=false
 # 导入环境变量
 . scripts/envVar.sh
 
+# 检查链码目录是否存在
+checkChaincodeDir() {
+  if [ ! -d "$CC_SRC_PATH" ]; then
+    printError "链码目录 $CC_SRC_PATH 不存在"
+    exit 1
+  fi
+  
+  # 检查链码文件
+  if [ ! -f "$CC_SRC_PATH/miaoasset.go" ]; then
+    printError "链码文件 $CC_SRC_PATH/miaoasset.go 不存在"
+    exit 1
+  fi
+  
+  printInfo "链码目录检查通过"
+}
+
 packageChaincode() {
   printInfo "打包链码 ${CC_NAME}"
   
+  # 创建临时目录
+  mkdir -p /tmp/chaincode-package
+  cp -r ${CC_SRC_PATH}/* /tmp/chaincode-package/
+  
+  # 创建go.mod文件(如果不存在)
+  if [ ! -f "/tmp/chaincode-package/go.mod" ]; then
+    cd /tmp/chaincode-package
+    go mod init github.com/hyperledger/fabric-samples/chaincode/miaoasset/go
+    go mod tidy
+    cd -
+  fi
+  
   set -x
-  peer lifecycle chaincode package ${CC_NAME}.tar.gz --path ${CC_SRC_PATH} --lang golang --label ${CC_NAME}_${CC_VERSION}
+  peer lifecycle chaincode package ${CC_NAME}.tar.gz --path /tmp/chaincode-package --lang golang --label ${CC_NAME}_${CC_VERSION}
   res=$?
   set +x
+  
+  rm -rf /tmp/chaincode-package
   
   if [ $res -ne 0 ]; then
     printError "链码打包失败"
@@ -184,6 +214,7 @@ parsePeerConnectionParameters() {
 }
 
 # 主函数
+checkChaincodeDir
 packageChaincode
 installChaincode 1
 installChaincode 2
